@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <title>驾驶员行为识别系统</title>
+    <style>
+        body {
+            font-family: "Microsoft YaHei", sans-serif;
+            background-color: #eef2f7;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding-top: 50px;
+        }
+        .container {
+            background-color: #fff;
+            width: 100%;
+            max-width: 600px;
+            border-radius: 15px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+            padding: 30px 40px;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        label {
+            font-weight: 600;
+            color: #34495e;
+            margin-bottom: 8px;
+        }
+        select, input[type="file"] {
+            padding: 10px 15px;
+            font-size: 16px;
+            border: 1.8px solid #bdc3c7;
+            border-radius: 8px;
+            transition: border-color 0.3s ease;
+            cursor: pointer;
+        }
+        select:focus, input[type="file"]:focus {
+            outline: none;
+            border-color: #2980b9;
+            box-shadow: 0 0 5px rgba(41,128,185,0.5);
+        }
+        button {
+            background: linear-gradient(45deg, #27ae60, #2ecc71);
+            border: none;
+            color: white;
+            font-weight: 700;
+            font-size: 18px;
+            padding: 12px 0;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        button:hover {
+            background: linear-gradient(45deg, #2ecc71, #27ae60);
+        }
+        .result, .image-preview {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #fefefe;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .result h2 {
+            color: #16a085;
+            font-size: 24px;
+            margin: 0;
+        }
+        .image-preview img {
+            max-width: 100%;
+            max-height: 320px;
+            border-radius: 12px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+            margin-top: 15px;
+        }
+        .no-image {
+            color: #7f8c8d;
+            font-style: italic;
+            font-size: 16px;
+        }
+        /* 文件名显示 */
+        .file-name {
+            font-size: 14px;
+            color: #34495e;
+            margin-top: -12px;
+            margin-bottom: 8px;
+            min-height: 18px;
+            font-style: italic;
+        }
+
+        /* 响应式 */
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+            }
+            button {
+                font-size: 16px;
+                padding: 10px 0;
+            }
+            .result h2 {
+                font-size: 20px;
+            }
+        }
+        /* 摄像头相关 */
+        #cameraContainer {
+            display: none;
+            margin-top: 40px;
+            text-align: center;
+        }
+        video {
+            border-radius: 12px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+        }
+        #liveResult {
+            margin-top: 15px;
+            font-size: 22px;
+            font-weight: bold;
+            color: #16a085;
+        }
+        .mode-select {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .mode-select label {
+            margin-right: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+  <div class="container">
+    <h1>驾驶员行为识别系统</h1>
+
+    <div class="mode-select">
+      <label><input type="radio" name="mode" value="upload" checked /> 上传图片预测</label>
+      <label><input type="radio" name="mode" value="camera" /> 摄像头实时识别</label>
+    </div>
+
+    <!-- 上传图片预测表单 -->
+    <form method="POST" enctype="multipart/form-data" id="uploadForm">
+      <label for="modelUpload">选择模型：</label>
+      <select name="model" id="modelUpload" required>
+        <option value="resnet" {% if selected_model == 'resnet' %}selected{% endif %}>ResNet</option>
+        <option value="mobilenet" {% if selected_model == 'mobilenet' %}selected{% endif %}>MobileNet</option>
+      </select>
+
+      <label for="image">上传图片：</label>
+      <input type="file" name="image" id="image" accept="image/*" required />
+      <div class="file-name" id="fileName"></div>
+
+      <button type="submit">上传并预测</button>
+    </form>
+
+    <!-- 上传图片的结果和预览 -->
+    <div id="uploadResultsContainer">
+      {% if result %}
+      <div class="result">
+        <h2>预测类别：<strong>{{ result }}</strong></h2>
+      </div>
+      {% endif %}
+
+      <h2 style="margin-top: 40px;">上传的图片：</h2>
+      <div class="image-preview">
+        {% if image_url and image_url != '' %}
+          <img src="{{ image_url }}" alt="Uploaded Image" />
+        {% else %}
+          <p class="no-image">暂无图片</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 摄像头实时识别区域 -->
+    <div id="cameraContainer">
+      <h2>摄像头实时行为识别（每2秒自动识别一次）</h2>
+      <label for="modelCamera">选择模型：</label>
+      <select id="modelCamera">
+        <option value="resnet">ResNet</option>
+        <option value="mobilenet">MobileNet</option>
+      </select>
+      <br /><br />
+      <video id="video" width="480" height="360" autoplay muted></video>
+      <div id="liveResult">等待摄像头启动...</div>
+    </div>
+  </div>
+
+<script>
+  // 上传文件名显示
+  const imageInput = document.getElementById('image');
+  const fileNameDiv = document.getElementById('fileName');
+  imageInput.addEventListener('change', () => {
+    if(imageInput.files.length > 0){
+      fileNameDiv.textContent = "已选择文件：" + imageInput.files[0].name;
+    } else {
+      fileNameDiv.textContent = "";
+    }
+  });
+
+  // 切换模式
+  const modeRadios = document.querySelectorAll('input[name="mode"]');
+  const uploadForm = document.getElementById('uploadForm');
+  const uploadResultsContainer = document.getElementById('uploadResultsContainer');
+  const cameraContainer = document.getElementById('cameraContainer');
+
+  modeRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if(radio.value === 'upload' && radio.checked){
+        uploadForm.style.display = 'flex';
+        uploadResultsContainer.style.display = 'block';
+        cameraContainer.style.display = 'none';
+        stopCameraStream();
+      } else if(radio.value === 'camera' && radio.checked){
+        uploadForm.style.display = 'none';
+        uploadResultsContainer.style.display = 'none';
+        cameraContainer.style.display = 'block';
+        startCameraStream();
+      }
+    });
+  });
+
+  // 页面载入时确保模式正确显示
+  window.addEventListener('load', () => {
+    const checkedRadio = document.querySelector('input[name="mode"]:checked');
+    if(checkedRadio.value === 'upload'){
+      uploadForm.style.display = 'flex';
+      uploadResultsContainer.style.display = 'block';
+      cameraContainer.style.display = 'none';
+      stopCameraStream();
+    } else {
+      uploadForm.style.display = 'none';
+      uploadResultsContainer.style.display = 'none';
+      cameraContainer.style.display = 'block';
+      startCameraStream();
+    }
+  });
+
+  // 摄像头相关
+  const video = document.getElementById('video');
+  const liveResult = document.getElementById('liveResult');
+  let stream = null;
+  let intervalId = null;
+
+  function startCameraStream(){
+    if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+      navigator.mediaDevices.getUserMedia({ video: true })
+      .then(s => {
+        stream = s;
+        video.srcObject = stream;
+
+        // 定时推理，每2秒发一次
+        intervalId = setInterval(() => {
+          takeFrameAndPredict();
+        }, 2000);
+      })
+      .catch(err => {
+        liveResult.textContent = '无法访问摄像头: ' + err.message;
+      });
+    } else {
+      liveResult.textContent = '浏览器不支持摄像头访问';
+    }
+  }
+
+  function stopCameraStream(){
+    if(intervalId){
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+    if(stream){
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+    liveResult.textContent = '等待摄像头启动...';
+  }
+
+  function takeFrameAndPredict(){
+    if(!stream) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 480;
+    canvas.height = video.videoHeight || 360;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(blob => {
+      const formData = new FormData();
+      formData.append('image', blob, 'frame.jpg');
+      formData.append('model', document.getElementById('modelCamera').value);
+
+      fetch('/predict_video_frame', {
+        method: 'POST',
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        if(data.result){
+          liveResult.textContent = `预测结果: ${data.result}`;
+        } else if(data.error){
+          liveResult.textContent = `错误: ${data.error}`;
+        }
+      })
+      .catch(() => {
+        liveResult.textContent = '推理请求失败';
+      });
+    }, 'image/jpeg');
+  }
+</script>
+</body>
+</html>
